@@ -1,111 +1,128 @@
-// This is a plugin, constructed from parts of Backbone.js and John Resig's inheritance script.
-// (See http://backbonejs.org, http://ejohn.org/blog/simple-javascript-inheritance/)
-// No credit goes to me as I did absolutely nothing except patch these two together.
-(function(root, factory) {
+(function (root, factory) {
 
   // Set up Backbone appropriately for the environment. Start with AMD.
   if (typeof define === 'function' && define.amd) {
-    define(['underscore', 'backbone'], function(_, Backbone) {
+    define(['underscore', 'backbone'], function (_, Backbone) {
       // Export global even in AMD case in case this script is loaded with
       // others that may still expect a global Backbone.
-      factory( _, Backbone);
+      factory(_, Backbone);
     });
 
-  // Next for Node.js or CommonJS.
+    // Next for Node.js or CommonJS.
   } else if (typeof exports !== 'undefined' && typeof require === 'function') {
     var _ = require('underscore'),
-		Backbone = require('backbone');
+      Backbone = require('backbone');
     factory(_, Backbone);
 
-  // Finally, as a browser global.
+    // Finally, as a browser global.
   } else {
     factory(root._, root.Backbone);
   }
 
 }(this, function factory(_, Backbone) {
-	Backbone.Model.extend = Backbone.Collection.extend = Backbone.Router.extend = Backbone.View.extend = function(protoProps, classProps) {
-		var child = inherits(this, protoProps, classProps);
-		child.extend = this.extend;
-		return child;
-	};
-	var unImplementedSuper = function(method){throw "Super does not implement this method: " + method;};
 
-  var fnTest = /\b_super\b/;
+  // Borrowed from https://www.npmjs.com/package/extend-with-super
+  function makeSuper(sourceProp, objProp) {
 
-  var makeWrapper = function(parentProto, name, fn) {
-    var wrapper = function() {
-      var tmp = this._super;
-
-      // Add a new ._super() method that is the same method
-      // but on the super-class
-      this._super = parentProto[name] || unImplementedSuper(name);
-
-      // The method only need to be bound temporarily, so we
-      // remove it when we're done executing
-      var ret;
-      try {
-        ret = fn.apply(this, arguments);
-      } finally {
-        this._super = tmp;
-      }
-      return ret;
+    var Class = function () {
+      this._super = objProp;
     };
 
-    //we must move properties from old function to new
-    for (var prop in fn) {
-      wrapper[prop] = fn[prop];
-      delete fn[prop];
+    var tmpClass = new Class();
+
+    return function () {
+      return sourceProp.apply(tmpClass, Array.prototype.slice.call(arguments));
+    };
+  }
+
+  // Borrowed from https://www.npmjs.com/package/extend-with-super
+  function extendWithSuper() {
+
+    var obj = arguments[0];
+
+    if (!obj) {
+      return false;
     }
 
-    return wrapper;
-  };
+    if (!_.isObject(obj)) {
+      return obj;
+    }
 
-	var ctor = function(){}, inherits = function(parent, protoProps, staticProps) {
-        var child, parentProto = parent.prototype;
+    var source;
+    var prop;
+    var length = arguments.length;
 
-		// The constructor function for the new subclass is either defined by you
-		// (the "constructor" property in your `extend` definition), or defaulted
-		// by us to simply call the parent's constructor.
-		if (protoProps && protoProps.hasOwnProperty('constructor')) {
-			child = protoProps.constructor;
-		} else {
-			child = function(){ return parent.apply(this, arguments); };
-		}
+    // Do we want X browser compatibility here?
+    // Would rather use Object.keys
+    // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys
+    for (var i = 1; i < length; i++) {
 
-		// Inherit class (static) properties from parent.
-		_.extend(child, parent, staticProps);
+      source = arguments[i];
 
-		// Set the prototype chain to inherit from `parent`, without calling
-		// `parent`'s constructor function.
-		ctor.prototype = parentProto;
-		child.prototype = new ctor();
+      if (_.isObject(source)) {
 
-		// Add prototype properties (instance properties) to the subclass,
-		// if supplied.
-		if (protoProps) {
-			_.extend(child.prototype, protoProps);
+        for (prop in source) {
 
-			// Copy the properties over onto the new prototype
-			for (var name in protoProps) {
-				// Check if we're overwriting an existing function
-				if (typeof protoProps[name] == "function" && fnTest.test(protoProps[name])) {
-					child.prototype[name] = makeWrapper(parentProto, name, protoProps[name]);
-				}
-			}
-		}
+          if (Object.hasOwnProperty.call(source, prop)) {
 
-		// Add static properties to the constructor function, if supplied.
-		if (staticProps) _.extend(child, staticProps);
+            if (_.isFunction(source[prop]) && _.isFunction(obj[prop])) {
+              obj[prop] = makeSuper(source[prop], obj[prop]);
+              obj[prop].prototype = source[prop].prototype;
+            } else {
+              obj[prop] = source[prop];
+            }
+          }
+        }
+      }
+    }
+    return obj;
+  }
 
-		// Correctly set child's `prototype.constructor`.
-		child.prototype.constructor = child;
+  // Backbone's original extend method except swapped out extend
+  // for extend-with-super
 
-		// Set a convenience property in case the parent's prototype is needed later.
-		child.__super__ = parentProto;
+  // class properties to be extended.
+  function extend(protoProps, staticProps) {
+    var parent = this;
+    var child;
 
-		return child;
-	};
+    // The constructor function for the new subclass is either defined by you
+    // (the "constructor" property in your `extend` definition), or defaulted
+    // by us to simply call the parent's constructor.
+    if (protoProps && _.has(protoProps, 'constructor')) {
+      child = protoProps.constructor;
+    } else {
+      child = function () {
+        return parent.apply(this, arguments);
+      };
+    }
 
-	return inherits;
+    // Add static properties to the constructor function, if supplied.
+    extendWithSuper(child, parent, staticProps);
+
+    // Set the prototype chain to inherit from `parent`, without calling
+    // `parent`'s constructor function.
+    var Surrogate = function () {
+      this.constructor = child;
+    };
+    Surrogate.prototype = parent.prototype;
+    child.prototype = new Surrogate;
+
+    // Add prototype properties (instance properties) to the subclass,
+    // if supplied.
+    if (protoProps) extendWithSuper(child.prototype, protoProps);
+
+    // Set a convenience property in case the parent's prototype is needed
+    // later.
+    child.__super__ = parent.prototype;
+
+    return child;
+  }
+
+  // Set up inheritance for the model, collection, router, view and history.
+  Backbone.Model.extend = Backbone.Collection.extend = Backbone.Router.extend = Backbone.View.extend = Backbone.History.extend = extend;
+
+  return extend;
+
 }));
 
