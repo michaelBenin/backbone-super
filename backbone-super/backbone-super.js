@@ -23,15 +23,9 @@
 
   // Borrowed from https://www.npmjs.com/package/extend-with-super
   function makeSuper(sourceProp, objProp) {
-
-    var Class = function () {
-      this._super = objProp;
-    };
-
-    var tmpClass = new Class();
-
     return function () {
-      return sourceProp.apply(tmpClass, Array.prototype.slice.call(arguments));
+      this._super = objProp;
+      return sourceProp.apply(this, Array.prototype.slice.call(arguments));
     };
   }
 
@@ -106,7 +100,7 @@
       this.constructor = child;
     };
     Surrogate.prototype = parent.prototype;
-    child.prototype = new Surrogate;
+    child.prototype = new Surrogate();
 
     // Add prototype properties (instance properties) to the subclass,
     // if supplied.
@@ -125,4 +119,3 @@
   return extend;
 
 }));
-
