@@ -110,6 +110,8 @@
     // later.
     child.__super__ = parent.prototype;
 
+    child.extend = extend;
+
     return child;
   }
 
